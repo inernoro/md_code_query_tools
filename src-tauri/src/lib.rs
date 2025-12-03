@@ -532,6 +532,7 @@ fn query_data(query_key: String, state: tauri::State<AppState>) -> QueryResult {
 #[tauri::command]
 fn verify_record(record_id: String, state: tauri::State<AppState>) -> Result<DataRecord, String> {
     let mut data_store = state.data_store.lock().unwrap();
+    let mut history_store = state.history_store.lock().unwrap();
     let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
     
     if let Some(record) = data_store.get_mut(&record_id) {
@@ -542,11 +543,24 @@ fn verify_record(record_id: String, state: tauri::State<AppState>) -> Result<Dat
         record.is_verified = true;
         record.verify_time = Some(now);
         let record_clone = record.clone();
+
+        // 同步更新历史记录中对应链接的核销状态
+        let link = record_clone.link.clone();
+        for item in history_store.iter_mut() {
+            if let Some(history_link) = &item.query_result {
+                if history_link == &link {
+                    item.is_verified = true;
+                }
+            }
+        }
         
         let store_clone = data_store.clone();
+        let history_clone = history_store.clone();
         drop(data_store);
+        drop(history_store);
         
         save_records(&store_clone);
+        save_history(&history_clone);
         
         Ok(record_clone)
     } else {
