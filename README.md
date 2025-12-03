@@ -1,6 +1,6 @@
-# 数据查询与二维码生成工具 V1.0
+# 数据查询与二维码生成工具
 
-基于 Tauri + React + TypeScript 开发的 Windows 桌面应用程序。
+基于 Tauri + React + TypeScript 开发的跨平台桌面应用程序。
 
 ![GitHub Actions](https://github.com/inernoro/md_code_query_tools/actions/workflows/build.yml/badge.svg)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
@@ -18,7 +18,26 @@
 
 从 [Releases](https://github.com/inernoro/md_code_query_tools/releases) 页面下载最新版本：
 
-- `数据查询与二维码生成工具_x.x.x_x64-setup.exe` - Windows 安装包
+### Windows
+- `md_code_query_tools_x.x.x_x64-setup.exe` - NSIS 安装包（推荐）
+- `md_code_query_tools_x.x.x_x64.msi` - MSI 安装包
+- `md_code_query_tools_x.x.x_x64-portable.exe` - 便携版（无需安装）
+
+### macOS
+- `md_code_query_tools_x.x.x_x64.dmg` - DMG 安装包
+
+> ⚠️ **macOS 用户注意**：由于应用未经 Apple 公证，首次打开可能提示"已损坏"或"无法验证开发者"。请执行以下命令解除限制：
+> ```bash
+> # 方法 1：解除 DMG 文件限制
+> xattr -cr ~/Downloads/md_code_query_tools_*.dmg
+> 
+> # 方法 2：安装后解除 App 限制
+> sudo xattr -rd com.apple.quarantine /Applications/md_code_query_tools.app
+> ```
+
+### Linux
+- `md_code_query_tools_x.x.x_amd64.deb` - Debian/Ubuntu 安装包
+- `md_code_query_tools_x.x.x_amd64.AppImage` - AppImage 便携版
 
 ## 数据文件格式
 
@@ -39,9 +58,12 @@
 ## 数据存储位置
 
 查询次数、核销状态、历史记录保存在：
-```
-C:\Users\<用户名>\AppData\Roaming\DataQueryTool\Data\
-```
+
+| 平台 | 路径 |
+|------|------|
+| Windows | `C:\Users\<用户名>\AppData\Roaming\DataQueryTool\Data\` |
+| macOS | `~/Library/Application Support/DataQueryTool/Data/` |
+| Linux | `~/.local/share/DataQueryTool/Data/` |
 
 ## 开发环境
 
