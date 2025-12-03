@@ -1,6 +1,7 @@
 export interface DataRecord {
   id: string;
   link: string;
+  all_columns: string[];
   query_count: number;
   is_verified: boolean;
   verify_time: string | null;
@@ -24,5 +25,6 @@ export interface QueryResult {
   found: boolean;
   record: DataRecord | null;
   is_duplicate: boolean;
+  matched_column: number | null;
 }
 

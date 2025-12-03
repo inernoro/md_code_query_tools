@@ -6,6 +6,7 @@ import { ask } from '@tauri-apps/plugin-dialog';
 interface DataRecord {
   id: string;
   link: string;
+  all_columns: string[];
   query_count: number;
   is_verified: boolean;
   verify_time: string | null;

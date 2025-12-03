@@ -11,8 +11,9 @@ use std::sync::Mutex;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DataRecord {
-    pub id: String,
-    pub link: String,
+    pub id: String,           // 第一列作为主键
+    pub link: String,         // 第二列作为链接（用于生成二维码）
+    pub all_columns: Vec<String>, // 所有列的值
     pub query_count: u32,
     pub is_verified: bool,
     pub verify_time: Option<String>,
@@ -39,12 +40,14 @@ pub struct QueryResult {
     pub found: bool,
     pub record: Option<DataRecord>,
     pub is_duplicate: bool,
+    pub matched_column: Option<usize>, // 匹配的列索引（从0开始）
 }
 
 // ============ 全局状态 ============
 
 struct AppState {
-    data_store: Mutex<HashMap<String, DataRecord>>,
+    data_store: Mutex<HashMap<String, DataRecord>>,      // id -> record
+    value_to_id: Mutex<HashMap<String, String>>,         // 任意列的值 -> id
     history_store: Mutex<Vec<HistoryRecord>>,
     duplicate_keys: Mutex<Vec<String>>,
 }
@@ -53,6 +56,7 @@ impl Default for AppState {
     fn default() -> Self {
         Self {
             data_store: Mutex::new(HashMap::new()),
+            value_to_id: Mutex::new(HashMap::new()),
             history_store: Mutex::new(Vec::new()),
             duplicate_keys: Mutex::new(Vec::new()),
         }
@@ -150,6 +154,7 @@ fn read_file_with_encoding(path: &Path) -> Result<String, String> {
 fn load_csv_file(
     path: &Path,
     store: &mut HashMap<String, DataRecord>,
+    value_index: &mut HashMap<String, String>,
     duplicates: &mut Vec<String>,
     saved_records: &HashMap<String, DataRecord>,
 ) -> Result<u32, String> {
@@ -178,6 +183,11 @@ fn load_csv_file(
                 let id = record.get(0).unwrap_or("").trim().to_string();
                 let link = record.get(1).unwrap_or("").trim().to_string();
                 
+                // 收集所有列的值
+                let all_columns: Vec<String> = (0..record.len())
+                    .map(|i| record.get(i).unwrap_or("").trim().to_string())
+                    .collect();
+                
                 if !id.is_empty() {
                     if store.contains_key(&id) {
                         if !duplicates.contains(&id) {
@@ -191,9 +201,17 @@ fn load_csv_file(
                                 (0, false, None)
                             };
                         
+                        // 为所有列的值建立索引
+                        for col_value in &all_columns {
+                            if !col_value.is_empty() {
+                                value_index.insert(col_value.clone(), id.clone());
+                            }
+                        }
+                        
                         store.insert(id.clone(), DataRecord {
                             id,
                             link,
+                            all_columns,
                             query_count,
                             is_verified,
                             verify_time,
@@ -211,6 +229,7 @@ fn load_csv_file(
 fn load_xlsx_file(
     path: &Path,
     store: &mut HashMap<String, DataRecord>,
+    value_index: &mut HashMap<String, String>,
     duplicates: &mut Vec<String>,
     saved_records: &HashMap<String, DataRecord>,
 ) -> Result<u32, String> {
@@ -231,6 +250,11 @@ fn load_xlsx_file(
                     let id = row[0].to_string().trim().to_string();
                     let link = row[1].to_string().trim().to_string();
                     
+                    // 收集所有列的值
+                    let all_columns: Vec<String> = row.iter()
+                        .map(|cell| cell.to_string().trim().to_string())
+                        .collect();
+                    
                     if !id.is_empty() {
                         if store.contains_key(&id) {
                             if !duplicates.contains(&id) {
@@ -244,9 +268,17 @@ fn load_xlsx_file(
                                     (0, false, None)
                                 };
                             
+                            // 为所有列的值建立索引
+                            for col_value in &all_columns {
+                                if !col_value.is_empty() {
+                                    value_index.insert(col_value.clone(), id.clone());
+                                }
+                            }
+                            
                             store.insert(id.clone(), DataRecord {
                                 id,
                                 link,
+                                all_columns,
                                 query_count,
                                 is_verified,
                                 verify_time,
@@ -265,6 +297,7 @@ fn load_xlsx_file(
 fn load_xls_file(
     path: &Path,
     store: &mut HashMap<String, DataRecord>,
+    value_index: &mut HashMap<String, String>,
     duplicates: &mut Vec<String>,
     saved_records: &HashMap<String, DataRecord>,
 ) -> Result<u32, String> {
@@ -285,6 +318,11 @@ fn load_xls_file(
                     let id = row[0].to_string().trim().to_string();
                     let link = row[1].to_string().trim().to_string();
                     
+                    // 收集所有列的值
+                    let all_columns: Vec<String> = row.iter()
+                        .map(|cell| cell.to_string().trim().to_string())
+                        .collect();
+                    
                     if !id.is_empty() {
                         if store.contains_key(&id) {
                             if !duplicates.contains(&id) {
@@ -298,9 +336,17 @@ fn load_xls_file(
                                     (0, false, None)
                                 };
                             
+                            // 为所有列的值建立索引
+                            for col_value in &all_columns {
+                                if !col_value.is_empty() {
+                                    value_index.insert(col_value.clone(), id.clone());
+                                }
+                            }
+                            
                             store.insert(id.clone(), DataRecord {
                                 id,
                                 link,
+                                all_columns,
                                 query_count,
                                 is_verified,
                                 verify_time,
@@ -326,9 +372,11 @@ fn load_data_folder(folder_path: String, state: tauri::State<AppState>) -> Resul
     }
 
     let mut data_store = state.data_store.lock().unwrap();
+    let mut value_index = state.value_to_id.lock().unwrap();
     let mut duplicates = state.duplicate_keys.lock().unwrap();
     
     data_store.clear();
+    value_index.clear();
     duplicates.clear();
 
     let saved_records = load_records();
@@ -347,9 +395,9 @@ fn load_data_folder(folder_path: String, state: tauri::State<AppState>) -> Resul
                     .unwrap_or_default();
                 
                 let result = match ext_str.as_str() {
-                    "csv" | "txt" => load_csv_file(&file_path, &mut data_store, &mut duplicates, &saved_records),
-                    "xlsx" => load_xlsx_file(&file_path, &mut data_store, &mut duplicates, &saved_records),
-                    "xls" => load_xls_file(&file_path, &mut data_store, &mut duplicates, &saved_records),
+                    "csv" | "txt" => load_csv_file(&file_path, &mut data_store, &mut value_index, &mut duplicates, &saved_records),
+                    "xlsx" => load_xlsx_file(&file_path, &mut data_store, &mut value_index, &mut duplicates, &saved_records),
+                    "xls" => load_xls_file(&file_path, &mut data_store, &mut value_index, &mut duplicates, &saved_records),
                     _ => continue,
                 };
                 
@@ -382,69 +430,82 @@ fn load_data_folder(folder_path: String, state: tauri::State<AppState>) -> Resul
 #[tauri::command]
 fn query_data(query_key: String, state: tauri::State<AppState>) -> QueryResult {
     let mut data_store = state.data_store.lock().unwrap();
+    let value_index = state.value_to_id.lock().unwrap();
     let mut history_store = state.history_store.lock().unwrap();
     let duplicates = state.duplicate_keys.lock().unwrap();
     
     let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
     let is_duplicate = duplicates.contains(&query_key);
     
-    if let Some(record) = data_store.get_mut(&query_key) {
-        record.query_count += 1;
-        let record_clone = record.clone();
-        
-        let history = HistoryRecord {
-            id: uuid_simple(),
-            query_time: now,
-            query_key: query_key.clone(),
-            query_result: Some(record_clone.link.clone()),
-            is_verified: record_clone.is_verified,
-        };
-        
-        history_store.insert(0, history);
-        
-        if history_store.len() > 100 {
-            history_store.truncate(100);
+    // 通过索引查找匹配的记录ID
+    if let Some(id) = value_index.get(&query_key) {
+        if let Some(record) = data_store.get_mut(id) {
+            record.query_count += 1;
+            let record_clone = record.clone();
+            
+            // 找出匹配的列索引
+            let matched_column = record_clone.all_columns.iter()
+                .position(|v| v == &query_key);
+            
+            let history = HistoryRecord {
+                id: uuid_simple(),
+                query_time: now,
+                query_key: query_key.clone(),
+                query_result: Some(record_clone.link.clone()),
+                is_verified: record_clone.is_verified,
+            };
+            
+            history_store.insert(0, history);
+            
+            if history_store.len() > 100 {
+                history_store.truncate(100);
+            }
+            
+            let store_clone = data_store.clone();
+            let history_clone = history_store.clone();
+            drop(data_store);
+            drop(value_index);
+            drop(history_store);
+            
+            save_records(&store_clone);
+            save_history(&history_clone);
+            
+            return QueryResult {
+                found: true,
+                record: Some(record_clone),
+                is_duplicate,
+                matched_column,
+            };
         }
-        
-        // 先克隆再保存
-        let store_clone = data_store.clone();
-        let history_clone = history_store.clone();
-        drop(data_store);
-        drop(history_store);
-        
-        save_records(&store_clone);
-        save_history(&history_clone);
-        
-        QueryResult {
-            found: true,
-            record: Some(record_clone),
-            is_duplicate,
-        }
-    } else {
-        let history = HistoryRecord {
-            id: uuid_simple(),
-            query_time: now,
-            query_key,
-            query_result: None,
-            is_verified: false,
-        };
-        
-        history_store.insert(0, history);
-        
-        if history_store.len() > 100 {
-            history_store.truncate(100);
-        }
-        
-        let history_clone = history_store.clone();
-        drop(history_store);
-        
-        save_history(&history_clone);
-        
-        QueryResult {
-            found: false,
-            record: None,
-            is_duplicate: false,
-        }
+    }
+    
+    // 没找到
+    let history = HistoryRecord {
+        id: uuid_simple(),
+        query_time: now,
+        query_key,
+        query_result: None,
+        is_verified: false,
+    };
+    
+    history_store.insert(0, history);
+    
+    if history_store.len() > 100 {
+        history_store.truncate(100);
+    }
+    
+    let history_clone = history_store.clone();
+    drop(data_store);
+    drop(value_index);
+    drop(history_store);
+    
+    save_history(&history_clone);
+    
+    QueryResult {
+        found: false,
+        record: None,
+        is_duplicate: false,
+        matched_column: None,
     }
 }
 
@@ -506,6 +567,7 @@ pub fn run() {
     
     let app_state = AppState {
         data_store: Mutex::new(HashMap::new()),
+        value_to_id: Mutex::new(HashMap::new()),
         history_store: Mutex::new(saved_history),
         duplicate_keys: Mutex::new(Vec::new()),
     };
