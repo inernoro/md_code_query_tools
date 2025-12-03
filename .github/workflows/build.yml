@@ -83,11 +83,17 @@ jobs:
           path: src-tauri/target/release/bundle/msi/*.msi
           retention-days: 30
 
+      - name: Rename Portable EXE with version
+        shell: pwsh
+        run: |
+          $version = "${{ steps.version.outputs.VERSION }}"
+          Rename-Item -Path "src-tauri/target/release/md_code_query_tools.exe" -NewName "md_code_query_tools_${version}_x64-portable.exe"
+
       - name: Upload Portable EXE
         uses: actions/upload-artifact@v4
         with:
           name: md_code_query_tools-Portable
-          path: src-tauri/target/release/md_code_query_tools.exe
+          path: src-tauri/target/release/md_code_query_tools_*_x64-portable.exe
           retention-days: 30
 
   release:
