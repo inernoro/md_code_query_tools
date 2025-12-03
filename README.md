@@ -24,16 +24,7 @@
 - `md_code_query_tools_x.x.x_x64-portable.exe` - 便携版（无需安装）
 
 ### macOS
-- `md_code_query_tools_x.x.x_x64.dmg` - DMG 安装包
-
-> ⚠️ **macOS 用户注意**：由于应用未经 Apple 公证，首次打开可能提示"已损坏"或"无法验证开发者"。请执行以下命令解除限制：
-> ```bash
-> # 方法 1：解除 DMG 文件限制
-> xattr -cr ~/Downloads/md_code_query_tools_*.dmg
-> 
-> # 方法 2：安装后解除 App 限制
-> sudo xattr -rd com.apple.quarantine /Applications/md_code_query_tools.app
-> ```
+- `md_code_query_tools_x.x.x_x64.dmg` - DMG 安装包（已签名并公证）
 
 ### Linux
 - `md_code_query_tools_x.x.x_amd64.deb` - Debian/Ubuntu 安装包
