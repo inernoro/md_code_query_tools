@@ -13,6 +13,7 @@ use std::sync::Mutex;
 pub struct DataRecord {
     pub id: String,           // 第一列作为主键
     pub link: String,         // 第二列作为链接（用于生成二维码）
+    #[serde(default)]         // Bug1修复: 兼容旧版本保存的记录（没有此字段）
     pub all_columns: Vec<String>, // 所有列的值
     pub query_count: u32,
     pub is_verified: bool,
@@ -47,7 +48,7 @@ pub struct QueryResult {
 
 struct AppState {
     data_store: Mutex<HashMap<String, DataRecord>>,      // id -> record
-    value_to_id: Mutex<HashMap<String, String>>,         // 任意列的值 -> id
+    value_to_ids: Mutex<HashMap<String, Vec<String>>>,   // Bug2修复: 任意列的值 -> 多个id (支持多对多)
     history_store: Mutex<Vec<HistoryRecord>>,
     duplicate_keys: Mutex<Vec<String>>,
 }
@@ -56,7 +57,7 @@ impl Default for AppState {
     fn default() -> Self {
         Self {
             data_store: Mutex::new(HashMap::new()),
-            value_to_id: Mutex::new(HashMap::new()),
+            value_to_ids: Mutex::new(HashMap::new()),
             history_store: Mutex::new(Vec::new()),
             duplicate_keys: Mutex::new(Vec::new()),
         }
@@ -154,7 +155,7 @@ fn read_file_with_encoding(path: &Path) -> Result<String, String> {
 fn load_csv_file(
     path: &Path,
     store: &mut HashMap<String, DataRecord>,
-    value_index: &mut HashMap<String, String>,
+    value_index: &mut HashMap<String, Vec<String>>,  // Bug2修复: 改为 Vec<String>
     duplicates: &mut Vec<String>,
     saved_records: &HashMap<String, DataRecord>,
 ) -> Result<u32, String> {
@@ -201,10 +202,13 @@ fn load_csv_file(
                                 (0, false, None)
                             };
                         
-                        // 为所有列的值建立索引
+                        // Bug2修复: 为所有列的值建立索引（支持多对多映射）
                         for col_value in &all_columns {
                             if !col_value.is_empty() {
-                                value_index.insert(col_value.clone(), id.clone());
+                                value_index
+                                    .entry(col_value.clone())
+                                    .or_insert_with(Vec::new)
+                                    .push(id.clone());
                             }
                         }
                         
@@ -229,7 +233,7 @@ fn load_csv_file(
 fn load_xlsx_file(
     path: &Path,
     store: &mut HashMap<String, DataRecord>,
-    value_index: &mut HashMap<String, String>,
+    value_index: &mut HashMap<String, Vec<String>>,  // Bug2修复: 改为 Vec<String>
     duplicates: &mut Vec<String>,
     saved_records: &HashMap<String, DataRecord>,
 ) -> Result<u32, String> {
@@ -268,10 +272,13 @@ fn load_xlsx_file(
                                     (0, false, None)
                                 };
                             
-                            // 为所有列的值建立索引
+                            // Bug2修复: 为所有列的值建立索引（支持多对多映射）
                             for col_value in &all_columns {
                                 if !col_value.is_empty() {
-                                    value_index.insert(col_value.clone(), id.clone());
+                                    value_index
+                                        .entry(col_value.clone())
+                                        .or_insert_with(Vec::new)
+                                        .push(id.clone());
                                 }
                             }
                             
@@ -297,7 +304,7 @@ fn load_xlsx_file(
 fn load_xls_file(
     path: &Path,
     store: &mut HashMap<String, DataRecord>,
-    value_index: &mut HashMap<String, String>,
+    value_index: &mut HashMap<String, Vec<String>>,  // Bug2修复: 改为 Vec<String>
     duplicates: &mut Vec<String>,
     saved_records: &HashMap<String, DataRecord>,
 ) -> Result<u32, String> {
@@ -336,10 +343,13 @@ fn load_xls_file(
                                     (0, false, None)
                                 };
                             
-                            // 为所有列的值建立索引
+                            // Bug2修复: 为所有列的值建立索引（支持多对多映射）
                             for col_value in &all_columns {
                                 if !col_value.is_empty() {
-                                    value_index.insert(col_value.clone(), id.clone());
+                                    value_index
+                                        .entry(col_value.clone())
+                                        .or_insert_with(Vec::new)
+                                        .push(id.clone());
                                 }
                             }
                             
@@ -372,7 +382,7 @@ fn load_data_folder(folder_path: String, state: tauri::State<AppState>) -> Resul
     }
 
     let mut data_store = state.data_store.lock().unwrap();
-    let mut value_index = state.value_to_id.lock().unwrap();
+    let mut value_index = state.value_to_ids.lock().unwrap();  // Bug2修复: 使用 value_to_ids
     let mut duplicates = state.duplicate_keys.lock().unwrap();
     
     data_store.clear();
@@ -430,16 +440,23 @@ fn load_data_folder(folder_path: String, state: tauri::State<AppState>) -> Resul
 #[tauri::command]
 fn query_data(query_key: String, state: tauri::State<AppState>) -> QueryResult {
     let mut data_store = state.data_store.lock().unwrap();
-    let value_index = state.value_to_id.lock().unwrap();
+    let value_index = state.value_to_ids.lock().unwrap();  // Bug2修复: 使用 value_to_ids
     let mut history_store = state.history_store.lock().unwrap();
     let duplicates = state.duplicate_keys.lock().unwrap();
     
     let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
     let is_duplicate = duplicates.contains(&query_key);
     
-    // 通过索引查找匹配的记录ID
-    if let Some(id) = value_index.get(&query_key) {
-        if let Some(record) = data_store.get_mut(id) {
+    // Bug2修复: 通过索引查找匹配的记录ID列表（支持多对多）
+    let lookup_result = value_index.get(&query_key).map(|ids| {
+        (ids.first().cloned(), ids.len() > 1)
+    });
+    
+    // 提前释放 value_index 的借用
+    drop(value_index);
+    
+    if let Some((Some(first_id), has_multiple)) = lookup_result {
+        if let Some(record) = data_store.get_mut(&first_id) {
             record.query_count += 1;
             let record_clone = record.clone();
             
@@ -464,7 +481,6 @@ fn query_data(query_key: String, state: tauri::State<AppState>) -> QueryResult {
             let store_clone = data_store.clone();
             let history_clone = history_store.clone();
             drop(data_store);
-            drop(value_index);
             drop(history_store);
             
             save_records(&store_clone);
@@ -473,7 +489,7 @@ fn query_data(query_key: String, state: tauri::State<AppState>) -> QueryResult {
             return QueryResult {
                 found: true,
                 record: Some(record_clone),
-                is_duplicate,
+                is_duplicate: is_duplicate || has_multiple,
                 matched_column,
             };
         }
@@ -496,7 +512,6 @@ fn query_data(query_key: String, state: tauri::State<AppState>) -> QueryResult {
     
     let history_clone = history_store.clone();
     drop(data_store);
-    drop(value_index);
     drop(history_store);
     
     save_history(&history_clone);
@@ -567,7 +582,7 @@ pub fn run() {
     
     let app_state = AppState {
         data_store: Mutex::new(HashMap::new()),
-        value_to_id: Mutex::new(HashMap::new()),
+        value_to_ids: Mutex::new(HashMap::new()),  // Bug2修复: 使用 value_to_ids
         history_store: Mutex::new(saved_history),
         duplicate_keys: Mutex::new(Vec::new()),
     };
