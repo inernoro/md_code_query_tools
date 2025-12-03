@@ -574,6 +574,28 @@ fn get_history(state: tauri::State<AppState>) -> Vec<HistoryRecord> {
 }
 
 #[tauri::command]
+fn save_qrcode_to_data_folder(filename: String, base64_data: String) -> Result<String, String> {
+    use base64::{Engine, engine::general_purpose::STANDARD};
+    
+    let data_dir = get_data_dir();
+    let qrcode_dir = data_dir.join("QRCodes");
+    
+    // 确保目录存在
+    if !qrcode_dir.exists() {
+        fs::create_dir_all(&qrcode_dir).map_err(|e| e.to_string())?;
+    }
+    
+    // 解码 base64 数据
+    let image_data = STANDARD.decode(&base64_data).map_err(|e| e.to_string())?;
+    
+    // 保存文件
+    let file_path = qrcode_dir.join(&filename);
+    fs::write(&file_path, image_data).map_err(|e| e.to_string())?;
+    
+    Ok(qrcode_dir.to_string_lossy().to_string())
+}
+
+#[tauri::command]
 fn clear_history(state: tauri::State<AppState>) {
     let mut history_store = state.history_store.lock().unwrap();
     history_store.clear();
@@ -617,6 +639,7 @@ pub fn run() {
             get_history,
             clear_history,
             delete_history_item,
+            save_qrcode_to_data_folder,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

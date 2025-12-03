@@ -41,6 +41,28 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-build-
 
+      - name: Get version from tag
+        id: version
+        shell: bash
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "Building version: $VERSION"
+
+      - name: Update version in tauri.conf.json
+        shell: pwsh
+        run: |
+          $config = Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json
+          $config.version = "${{ steps.version.outputs.VERSION }}"
+          $config | ConvertTo-Json -Depth 10 | Set-Content src-tauri/tauri.conf.json -Encoding UTF8
+
+      - name: Update version in package.json
+        shell: pwsh
+        run: |
+          $pkg = Get-Content package.json -Raw | ConvertFrom-Json
+          $pkg.version = "${{ steps.version.outputs.VERSION }}"
+          $pkg | ConvertTo-Json -Depth 10 | Set-Content package.json -Encoding UTF8
+
       - name: Install dependencies
         run: npm install
 

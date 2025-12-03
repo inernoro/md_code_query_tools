@@ -11,6 +11,7 @@ function App() {
   const [currentRecord, setCurrentRecord] = useState<DataRecord | null>(null);
   const [history, setHistory] = useState<HistoryRecord[]>([]);
   const [isDataLoaded, setIsDataLoaded] = useState(false);
+  const [toast, setToast] = useState<{ message: string; visible: boolean }>({ message: '', visible: false });
 
   const loadHistory = useCallback(async () => {
     try {
@@ -41,7 +42,14 @@ function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [currentRecord]);
 
-  const saveQRCode = () => {
+  const showToast = (message: string) => {
+    setToast({ message, visible: true });
+    setTimeout(() => {
+      setToast({ message: '', visible: false });
+    }, 10000);
+  };
+
+  const saveQRCode = async () => {
     const svg = document.querySelector('.qr-container svg');
     if (!svg || !currentRecord) return;
 
@@ -50,15 +58,23 @@ function App() {
     const ctx = canvas.getContext('2d');
     const img = new Image();
 
-    img.onload = () => {
+    img.onload = async () => {
       canvas.width = 200;
       canvas.height = 200;
       ctx?.drawImage(img, 0, 0, 200, 200);
       
-      const link = document.createElement('a');
-      link.download = `qrcode_${currentRecord.id}.png`;
-      link.href = canvas.toDataURL('image/png');
-      link.click();
+      // 获取 base64 数据（去掉前缀）
+      const dataUrl = canvas.toDataURL('image/png');
+      const base64Data = dataUrl.replace(/^data:image\/png;base64,/, '');
+      const filename = `qrcode_${currentRecord.id}.png`;
+      
+      try {
+        await invoke('save_qrcode_to_data_folder', { filename, base64Data });
+        showToast('已保存到数据文件夹');
+      } catch (error) {
+        console.error('保存失败:', error);
+        showToast('保存失败: ' + error);
+      }
     };
 
     img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
@@ -134,6 +150,16 @@ function App() {
           <span>快捷键：Enter 查询 | Ctrl+S 保存二维码 | 右键二维码可保存</span>
         </div>
       </div>
+
+      {/* Toast 提示 */}
+      {toast.visible && (
+        <div className="fixed bottom-16 right-4 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 animate-fade-in">
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+          <span>{toast.message}</span>
+        </div>
+      )}
     </div>
   );
 }

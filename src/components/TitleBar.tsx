@@ -1,7 +1,14 @@
+import { useState, useEffect } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { getVersion } from '@tauri-apps/api/app';
 
 export function TitleBar() {
   const appWindow = getCurrentWindow();
+  const [version, setVersion] = useState('');
+
+  useEffect(() => {
+    getVersion().then(v => setVersion(v));
+  }, []);
 
   const handleMinimize = () => {
     appWindow.minimize();
@@ -42,7 +49,7 @@ export function TitleBar() {
     >
       <div className="flex items-center gap-2">
         <span className="text-white font-medium text-sm tracking-wide">
-          数据查询与二维码生成工具 V1.0
+          数据查询与二维码生成工具 {version ? `V${version}` : ''}
         </span>
       </div>
       
