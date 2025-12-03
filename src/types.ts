@@ -26,5 +26,5 @@ export interface QueryResult {
   record: DataRecord | null;
   is_duplicate: boolean;
   matched_column: number | null;
+  multiple_matches: boolean;
 }
-
