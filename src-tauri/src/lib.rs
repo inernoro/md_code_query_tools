@@ -152,6 +152,17 @@ fn read_file_with_encoding(path: &Path) -> Result<String, String> {
 
 // ============ 文件加载 ============
 
+/// 从所有列中找到第一个 HTTP/HTTPS 链接
+fn find_http_link(columns: &[String]) -> String {
+    for col in columns {
+        let lower = col.to_lowercase();
+        if lower.starts_with("http://") || lower.starts_with("https://") {
+            return col.clone();
+        }
+    }
+    String::new()
+}
+
 fn load_csv_file(
     path: &Path,
     store: &mut HashMap<String, DataRecord>,
@@ -180,14 +191,16 @@ fn load_csv_file(
 
     for result in rdr.records() {
         if let Ok(record) = result {
-            if record.len() >= 2 {
+            if record.len() >= 1 {
                 let id = record.get(0).unwrap_or("").trim().to_string();
-                let link = record.get(1).unwrap_or("").trim().to_string();
                 
                 // 收集所有列的值
                 let all_columns: Vec<String> = (0..record.len())
                     .map(|i| record.get(i).unwrap_or("").trim().to_string())
                     .collect();
+                
+                // 从所有列中找到 HTTP 链接作为二维码内容
+                let link = find_http_link(&all_columns);
                 
                 if !id.is_empty() {
                     if store.contains_key(&id) {
@@ -247,14 +260,16 @@ fn load_xlsx_file(
                     continue;
                 }
                 
-                if row.len() >= 2 {
+                if row.len() >= 1 {
                     let id = row[0].to_string().trim().to_string();
-                    let link = row[1].to_string().trim().to_string();
                     
                     // 收集所有列的值
                     let all_columns: Vec<String> = row.iter()
                         .map(|cell| cell.to_string().trim().to_string())
                         .collect();
+                    
+                    // 从所有列中找到 HTTP 链接作为二维码内容
+                    let link = find_http_link(&all_columns);
                     
                     if !id.is_empty() {
                         if store.contains_key(&id) {
@@ -315,14 +330,16 @@ fn load_xls_file(
                     continue;
                 }
                 
-                if row.len() >= 2 {
+                if row.len() >= 1 {
                     let id = row[0].to_string().trim().to_string();
-                    let link = row[1].to_string().trim().to_string();
                     
                     // 收集所有列的值
                     let all_columns: Vec<String> = row.iter()
                         .map(|cell| cell.to_string().trim().to_string())
                         .collect();
+                    
+                    // 从所有列中找到 HTTP 链接作为二维码内容
+                    let link = find_http_link(&all_columns);
                     
                     if !id.is_empty() {
                         if store.contains_key(&id) {
