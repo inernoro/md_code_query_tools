@@ -1,12 +1,12 @@
 [package]
-name = "data-query-tool"
+name = "md_code_query_tools"
 version = "1.0.0"
-description = "数据查询与二维码生成工具"
+description = "Data Query and QR Code Generation Tool"
 authors = ["you"]
 edition = "2021"
 
 [lib]
-name = "data_query_tool_lib"
+name = "md_code_query_tools_lib"
 crate-type = ["lib", "cdylib", "staticlib"]
 
 [build-dependencies]

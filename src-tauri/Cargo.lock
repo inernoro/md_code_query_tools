@@ -605,24 +605,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "data-query-tool"
-version = "1.0.0"
-dependencies = [
- "calamine",
- "chrono",
- "csv",
- "dirs 5.0.1",
- "encoding_rs",
- "encoding_rs_io",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "tauri-plugin-fs",
-]
-
-[[package]]
 name = "deranged"
 version = "0.5.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1942,6 +1924,24 @@ name = "matches"
 version = "0.1.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2532096657941c2fea9c289d370a250971c689d4f143798ff67113ec042024a5"
+
+[[package]]
+name = "md_code_query_tools"
+version = "1.0.0"
+dependencies = [
+ "calamine",
+ "chrono",
+ "csv",
+ "dirs 5.0.1",
+ "encoding_rs",
+ "encoding_rs_io",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tauri-plugin-fs",
+]
 
 [[package]]
 name = "memchr"

@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "DataQueryTool",
+  "productName": "md_code_query_tools",
   "version": "1.0.0",
   "identifier": "com.dataquery.tool",
   "build": {
