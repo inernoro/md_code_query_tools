@@ -13,7 +13,8 @@ use std::sync::Mutex;
 pub struct DataRecord {
     pub id: String,           // 第一列作为主键
     pub link: String,         // 第二列作为链接（用于生成二维码）
-    pub all_columns: Vec<String>, // 所有列的值
+    #[serde(default)]
+    pub all_columns: Vec<String>, // 所有列的值（向后兼容旧数据）
     pub query_count: u32,
     pub is_verified: bool,
     pub verify_time: Option<String>,
@@ -47,7 +48,7 @@ pub struct QueryResult {
 
 struct AppState {
     data_store: Mutex<HashMap<String, DataRecord>>,      // id -> record
-    value_to_id: Mutex<HashMap<String, String>>,         // 任意列的值 -> id
+    value_to_id: Mutex<HashMap<String, Vec<String>>>,    // 任意列的值 -> ids（支持多条记录共享同一值）
     history_store: Mutex<Vec<HistoryRecord>>,
     duplicate_keys: Mutex<Vec<String>>,
 }
@@ -154,7 +155,7 @@ fn read_file_with_encoding(path: &Path) -> Result<String, String> {
 fn load_csv_file(
     path: &Path,
     store: &mut HashMap<String, DataRecord>,
-    value_index: &mut HashMap<String, String>,
+    value_index: &mut HashMap<String, Vec<String>>,
     duplicates: &mut Vec<String>,
     saved_records: &HashMap<String, DataRecord>,
 ) -> Result<u32, String> {
@@ -201,10 +202,10 @@ fn load_csv_file(
                                 (0, false, None)
                             };
                         
-                        // 为所有列的值建立索引
+                        // 为所有列的值建立索引（支持多条记录共享同一值）
                         for col_value in &all_columns {
                             if !col_value.is_empty() {
-                                value_index.insert(col_value.clone(), id.clone());
+                                value_index.entry(col_value.clone()).or_default().push(id.clone());
                             }
                         }
                         
@@ -229,7 +230,7 @@ fn load_csv_file(
 fn load_xlsx_file(
     path: &Path,
     store: &mut HashMap<String, DataRecord>,
-    value_index: &mut HashMap<String, String>,
+    value_index: &mut HashMap<String, Vec<String>>,
     duplicates: &mut Vec<String>,
     saved_records: &HashMap<String, DataRecord>,
 ) -> Result<u32, String> {
@@ -268,10 +269,10 @@ fn load_xlsx_file(
                                     (0, false, None)
                                 };
                             
-                            // 为所有列的值建立索引
+                            // 为所有列的值建立索引（支持多条记录共享同一值）
                             for col_value in &all_columns {
                                 if !col_value.is_empty() {
-                                    value_index.insert(col_value.clone(), id.clone());
+                                    value_index.entry(col_value.clone()).or_default().push(id.clone());
                                 }
                             }
                             
@@ -297,7 +298,7 @@ fn load_xlsx_file(
 fn load_xls_file(
     path: &Path,
     store: &mut HashMap<String, DataRecord>,
-    value_index: &mut HashMap<String, String>,
+    value_index: &mut HashMap<String, Vec<String>>,
     duplicates: &mut Vec<String>,
     saved_records: &HashMap<String, DataRecord>,
 ) -> Result<u32, String> {
@@ -336,10 +337,10 @@ fn load_xls_file(
                                     (0, false, None)
                                 };
                             
-                            // 为所有列的值建立索引
+                            // 为所有列的值建立索引（支持多条记录共享同一值）
                             for col_value in &all_columns {
                                 if !col_value.is_empty() {
-                                    value_index.insert(col_value.clone(), id.clone());
+                                    value_index.entry(col_value.clone()).or_default().push(id.clone());
                                 }
                             }
                             
@@ -437,45 +438,47 @@ fn query_data(query_key: String, state: tauri::State<AppState>) -> QueryResult {
     let now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S").to_string();
     let is_duplicate = duplicates.contains(&query_key);
     
-    // 通过索引查找匹配的记录ID
-    if let Some(id) = value_index.get(&query_key) {
-        if let Some(record) = data_store.get_mut(id) {
-            record.query_count += 1;
-            let record_clone = record.clone();
-            
-            // 找出匹配的列索引
-            let matched_column = record_clone.all_columns.iter()
-                .position(|v| v == &query_key);
-            
-            let history = HistoryRecord {
-                id: uuid_simple(),
-                query_time: now,
-                query_key: query_key.clone(),
-                query_result: Some(record_clone.link.clone()),
-                is_verified: record_clone.is_verified,
-            };
-            
-            history_store.insert(0, history);
-            
-            if history_store.len() > 100 {
-                history_store.truncate(100);
+    // 通过索引查找匹配的记录ID（取第一个匹配的记录）
+    if let Some(ids) = value_index.get(&query_key) {
+        if let Some(id) = ids.first() {
+            if let Some(record) = data_store.get_mut(id) {
+                record.query_count += 1;
+                let record_clone = record.clone();
+                
+                // 找出匹配的列索引
+                let matched_column = record_clone.all_columns.iter()
+                    .position(|v| v == &query_key);
+                
+                let history = HistoryRecord {
+                    id: uuid_simple(),
+                    query_time: now,
+                    query_key: query_key.clone(),
+                    query_result: Some(record_clone.link.clone()),
+                    is_verified: record_clone.is_verified,
+                };
+                
+                history_store.insert(0, history);
+                
+                if history_store.len() > 100 {
+                    history_store.truncate(100);
+                }
+                
+                let store_clone = data_store.clone();
+                let history_clone = history_store.clone();
+                drop(data_store);
+                drop(value_index);
+                drop(history_store);
+                
+                save_records(&store_clone);
+                save_history(&history_clone);
+                
+                return QueryResult {
+                    found: true,
+                    record: Some(record_clone),
+                    is_duplicate,
+                    matched_column,
+                };
             }
-            
-            let store_clone = data_store.clone();
-            let history_clone = history_store.clone();
-            drop(data_store);
-            drop(value_index);
-            drop(history_store);
-            
-            save_records(&store_clone);
-            save_history(&history_clone);
-            
-            return QueryResult {
-                found: true,
-                record: Some(record_clone),
-                is_duplicate,
-                matched_column,
-            };
         }
     }
     
